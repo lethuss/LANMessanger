@@ -16,8 +16,10 @@
 //STRUCS
 
 pthread_mutex_t lock, lockm;
-
-
+char broadIP[16];
+char** broadContacts;
+char msgMcast[256];
+int multiCount;
 
 typedef struct mensagem{
     
@@ -52,15 +54,12 @@ typedef struct Sera{
 }cliAdr;
 
 
-
 //VARIAVEIS GLOBAIS
 
 static int i =0;
 static msg * messageList = NULL;
 static contato * contactList = NULL;
 static int ON = 1;
-
-
 
 
 //FUNÇÕES DE INICIALIZAÇÃO
@@ -129,7 +128,7 @@ void* messageTreament(void* A){
     n = read(*newsockfd,buffer,255);                                        //Le a mensagem do socket
     if (n < 0) error("ERROR reading from socket");
     
-    if(strcmp(buffer, "") != 0 ){
+    if(strcmp(buffer, "") != 0 ){       //Só continua se buffer conter uma mensagem
     
     msg *a;                             //Cria novo no com a mensagem
     a = initMsg(buffer,buf, 1);
@@ -188,7 +187,6 @@ void* listener(){
                     error("ERROR on accept");}
                     
                     pthread_create(&T_messageTreament, 0, (void *) messageTreament, (void*) &newsockfd);       //dispara thread para tratar mensagem
-                    
             }
             
             pthread_exit(0);
@@ -201,32 +199,33 @@ void* listener(){
 
 void* clientThread(void* A)
 {
+    //incialização das variaveis
     fflush(stdin);
-	printf("6\n");
     int sockfd, portno, n;
-    int* result;
+    int* result;                        //retorna estado da thread
     char buffer[256];
     struct sockaddr_in serv_addr;
     struct hostent *server;
     
+    //seleção da porta
     portno = portnum;
     result = (int*)malloc(sizeof(int));
-	
+    
+    //passagem de parametros para a thread
     cliAdr* cliadr = (cliAdr*) A; 
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);  //estabelece o file descriptor que sera usado para o cliente estabelecer conexoes
     if (sockfd < 0){
         *result = 0;
         pthread_exit((void*)result);}
-printf("7\n");
     
     server = gethostbyname(cliadr->hostname);  //pega o ip do servidor, com base no seu nome
-printf("11\n");    
+
     if (server == NULL) {
-	printf("DERVER: %s\n", cliadr->hostname);
+
         *result = 0;
         pthread_exit((void*)result);}
-printf("12\n");
+
     bzero((char *) &serv_addr, sizeof(serv_addr));  //zera os buffers 
     serv_addr.sin_family = AF_INET; //nesse paso, determinamos o tipo da socket, nao para comunicação interna à maquina, mas comunicacao via rede
     bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length); //copia o tamanho do endereço do servidor para h_addr
@@ -237,6 +236,8 @@ printf("12\n");
         pthread_exit((void*)result);}
     
     bzero(buffer,256);
+    
+    //passagem da mensagem para o buffer
     strcpy(buffer, cliadr->message);
     
     n = write(sockfd,buffer,strlen(buffer));
@@ -251,14 +252,13 @@ printf("12\n");
     bzero(buffer,256);
     
     n = read(sockfd,buffer,strlen(buffer));
-	printf("8\n");
-    
     
     *result = 1;
-	printf("9\n");
 	fflush(0);
     pthread_exit((void*)result);
 }
+
+
 
 //THREAD PING
 
@@ -310,30 +310,125 @@ void* ping(){
                 
                 inet_ntop(AF_INET, &serv_addr.sin_addr, buf, sizeof( buf));
                 
-                
-                
-                //if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0){ //faz a conexão com o serv
-                //    result = 0;}
-                  
                 a = connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr));
                 
+                if(a == 0){
+                    it2->online =1;}else{
+                        it2->online = 0;}
+                        
+                        it2 = it2->next;
+                        
+                        close(sockfd);}
+                        
+                        sockfd = socket(AF_INET, SOCK_STREAM, 0);
+                        
+                        server = gethostbyname(it2->IP);
+                        bzero((char *) &serv_addr, sizeof(serv_addr));
+                        serv_addr.sin_family = AF_INET;
+                        bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length);
+                        serv_addr.sin_port = htons(portno);
+                        
+                        inet_ntop(AF_INET, &serv_addr.sin_addr, buf, sizeof( buf));
+                        
+                        a = connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr));
+                        
+                        if(a == 0){
+                            it2->online =1;}else{
+                                it2->online = 0;}
+                                close(sockfd);
+                                
+        }
+    }
+    pthread_exit(0);
+}
+
+void* multicast2(){
+    int i;
+    
+    //salva variaveis localmente, porque podem ser alteradas por serem globais
+    char** saveplease = malloc(multiCount*16);
+    for(i = 0; i<multiCount; i++)
+        saveplease[i] = malloc(16);
+    for(i = 0; i<multiCount; i++)
+        strcpy(saveplease[i],broadContacts[i]);
+    
+    //op mantem o loop rodando
+    int op = 1;
+    fflush(stdin);
+    contato *it2;
+    int sockfd, portno, n;
+    int result;
+    char buffer[256];
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+    char buf[INET_ADDRSTRLEN] = "";
+    
+    int a;
+    
+    portno = portnum;
+    int iterador = 0;
+    while(op){
+        printf("1\n");
+        fflush(0);
+        
+        //it2 recebe a cabeça do contact list
+        it2 = contactList;
+        
+        if(it2->next != NULL){
+            
+            fflush(0);
+            it2 = it2->next;        //pula cabeça
+            
+            while(it2->next != NULL){
                 
-                printf("\n\nerrnodentro = %d.\n", errno);
-                printf("IPPPPPdentroo: %s\n", buf);
-                printf("Adentro: %d", a);
-                //fflush(0);
+                fflush(0);
+                //cria socket
+                sockfd = socket(AF_INET, SOCK_STREAM, 0);
                 
+                fflush(0);
+                if (sockfd < 0){
+                    printf("ERRO: SOCKFD");
+                    fflush(0);
+                }
+                
+                fflush(0);
+                //pega o IP do servidor
+                server = gethostbyname(it2->IP);
+                
+                if (server == NULL) {
+                    printf("ERRO: SERVER");
+                    fflush(0);
+                }
+                
+                bzero((char *) &serv_addr, sizeof(serv_addr));
+                serv_addr.sin_family = AF_INET;
+                bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr,server->h_length);
+                serv_addr.sin_port = htons(portno);
+                
+                inet_ntop(AF_INET, &serv_addr.sin_addr, buf, sizeof( buf));
+                
+                //faz a conexão
+                a = connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr));
+                
+                //se o contato estiver na lista de multicast, a mensagem eh mandada pra ele
+                for(i=0; i<multiCount; i++){
+                    if(strcmp(it2->IP,saveplease[i]) == 0){
+                        write(sockfd,msgMcast,strlen(msgMcast));
+                    }
+                }
                 
                 
                 if(a == 0){
-                it2->online =1;}else{
-                    it2->online = 0;}
-    
-                it2 = it2->next;
-                
-                close(sockfd);}
+                    it2->online =1;}else{
+                        it2->online = 0;}
+                        
+                        it2 = it2->next;
+                        
+                        close(sockfd);
+            }
+            //Abaixo se repete o feito acima, mas a ultima interação, isso ocorre para nunca cairmos no null do ultimo elo da lista encadeada
             
-            
+            fflush(0);
             sockfd = socket(AF_INET, SOCK_STREAM, 0);
             
             server = gethostbyname(it2->IP);
@@ -345,57 +440,28 @@ void* ping(){
             inet_ntop(AF_INET, &serv_addr.sin_addr, buf, sizeof( buf));
             
             a = connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr));
-                
-            printf("\n\nerrnofora = %d.\n", errno);
-            printf("\nIPPPPPfora: %s\n", buf);
-            printf("Afora: %d", a );
-            fflush(0);
+            
+            for(i=0; i<multiCount; i++){
+                if(strcmp(it2->IP,saveplease[i]) == 0){
+                    write(sockfd,msgMcast,strlen(msgMcast));
+                    
+                }
+            }
+            op = 0; 
+            
             
             if(a == 0){
                 it2->online =1;}else{
                     it2->online = 0;}
-            close(sockfd);
-
-                }
+                    close(sockfd);
+                    
+        }
     }
-    free(server);
     pthread_exit(0);
 }
 
 //THREADS E FUNÇÕES PRINCIPAIS
 
-void multicast(char** broadContacts, int size, char*msg){
-	int i;
-	pthread_t T_Sender;
-	void* status;
-	
-	//printf("mensagem a ser enviada: %s\n", msg2mcast->message);
-	contato *it;printf("1\n");
-	for(it = contactList; it->next!=NULL; it = it->next){
-		printf("5\n");		
-		for(i = 1; i < 2; i++){
-			cliAdr* msg2mcast = malloc(sizeof(cliAdr));
-		        msg2mcast->hostname = (char*)malloc(16*sizeof(char));
-		        msg2mcast->message = (char*)malloc(256*sizeof(char));
-			strcpy(msg2mcast->message, msg);
-			//getchar();
-			printf("2\n");
-			fflush(0);
-			if(   strcmp(it->next->IP, broadContacts[i]) == 0   )
-			{
-			printf("mensag3m envciada para %s\n", broadContacts[i]);
-			fflush(0);
-			sleep(3);
-			strcpy(msg2mcast->hostname,broadContacts[i]);printf("3\n");
-			printf("%s\n", msg2mcast->hostname);
-			sleep(4);
-			pthread_create( &T_Sender, NULL, clientThread, (void*) msg2mcast);
-			pthread_join(T_Sender, &status); 
-			bzero(msg2mcast->hostname, 16);
-			}
-		}
-	}	
-}
 
 
 void printSplash(){
@@ -448,19 +514,19 @@ int contactPrint(){
     
     if(it3->next != NULL){      //checa se lista esta vazia
         
-        printf("///////////////////////////ONLINE///////////////////////////\n");
+        printf("Online: \n");
         it3 = it3->next;
         while(it3->next != NULL){
 
             if (it3->online == 1){
-                printf("%d) %s    %s   Adicionado em: %s\n\n",k, it3->IP, it3->Nome, it3->timeinfo);    
+                printf("%d) %s    %s     \nAdicionado em: %s\n\n",k, it3->IP, it3->Nome, it3->timeinfo);    
             }
             it3 = it3->next;
             k++;
         }
 
         if (it3->online == 1){
-        printf("%d) %s    %s   Adicionado em: %s\n", k, it3->IP, it3->Nome, it3->timeinfo);
+        printf("%d) %s    %s     \nAdicionado em: %s\n", k, it3->IP, it3->Nome, it3->timeinfo);
         }
 
     }
@@ -472,19 +538,19 @@ int contactPrint(){
     
     if(it3->next != NULL){      //checa se lista esta vazia
         
-        printf("///////////////////////////OFFLINE//////////////////////////\n");
+        printf("Offline: \n");
         it3 = it3->next;
         while(it3->next != NULL){
 
             if (it3->online == 0){
-                printf("%d) %s    %s   Adicionado em: %s\n\n",k, it3->IP, it3->Nome, it3->timeinfo);    
+                printf("%d) %s    %s     \nAdicionado em: %s\n\n",k, it3->IP, it3->Nome, it3->timeinfo);    
             }
             it3 = it3->next;
             k++;
         }
 
         if (it3->online == 0){
-        printf("%d) %s    %s   Adicionado em: %s\n", k, it3->IP, it3->Nome, it3->timeinfo);
+        printf("%d) %s    %s     \nAdicionado em: %s\n", k, it3->IP, it3->Nome, it3->timeinfo);
         }
         return 1;       //retorna 1 se lista tem elementos
     }
@@ -564,7 +630,7 @@ void printNoBroadContacts(char** broadContacts, int size){
 	int i, pegou = 0;
 	contato *it;
 	for(it = contactList; it->next!=NULL; it = it->next){
-		for(i = 1; i < size+1; i++){
+		for(i = 0; i < size; i++){
 			//getchar();
 			if(   strcmp(it->next->IP, broadContacts[i]) == 0   )
 			{pegou = 1;}
@@ -578,7 +644,7 @@ void printBroadContacts(char** broadContacts, int size){
 	int i, pegou = 0;
 	contato *it;
 	for(it = contactList; it->next!=NULL; it = it->next){
-		for(i = 1; i < size+1; i++){
+		for(i = 0; i < size; i++){
 			//getchar();
 			if(   strcmp(it->next->IP, broadContacts[i]) == 0   )
 			{pegou = 1;}
@@ -589,7 +655,6 @@ void printBroadContacts(char** broadContacts, int size){
 
 
 }
-
 
 contato* getIpByNumber(int k){
 
@@ -655,7 +720,6 @@ return 0;
 int printMessages(){
     
     msg *it2;
-    printf("'aaa\n");
     fflush(0);
     it2 = messageList;
     
@@ -674,7 +738,6 @@ int printMessages(){
             
             
         }
-        printf("'bbb\n");
     	fflush(0);
 
             if(it2->direction == 1){
@@ -693,339 +756,309 @@ int printMessages(){
 
 int main(int argc, char *argv[])
 {
-char aux[256], msgMcast[256];
-char aux2[16];
-void *status;
-int option;
+    broadContacts = (char**) malloc(100*sizeof(char*));
+    char aux[256];
+    char aux2[16];
+    int aux13;
+    void *status;
+    int option;
     
-messageList = initMsg("HEAD","-1", -1);
-
-contactList = initContact("HEAD","-1");
-   
-pthread_t T_Listener; 
-pthread_t T_Sender;
-pthread_t T_Ping;
-
-//pthread_create(&T_Listener, 0, (void *) listener, (void*) 0);
-pthread_create(&T_Ping, 0, (void *) ping, (void*) 0);
-
-printSplash();
-/*
-contato *a; 
-a = initContact("EU","127.0.0.1");      //inicializa novo contato                        
-contato *it;
-it = contactList;               //Variavel auxiliar para percorrer lista                    
-while(it->next != NULL){
-	it = it->next;
-}                        
-it->next = a;                   //salva novo contato ao final da lista*/
-
-int aux13, aux15, aux25 = 1;
-int count15 = 0;
-char broadIP[16];
-
-/*char** broadIPs = (char**) malloc(100*sizeof(char*));
-
-for (aux15=0; aux15<100; aux15++){
-    broadIPs[aux15] = (char*)malloc(16);	
-}*/
-
-
-
-
-
-
-while(ON){
-
-    system("clear");
-    printMenu();
+    messageList = initMsg("HEAD","-1", -1);
     
-    scanf("%d", &option);
-
+    contactList = initContact("HEAD","-1");
     
-    if (option <= 0 || option >= 8){
+    pthread_t T_Listener; 
+    pthread_t T_Sender;
+    pthread_t T_Ping;
+    pthread_t T_multicast2;
+    
+    pthread_create(&T_Listener, 0, (void *) listener, (void*) 0);
+    pthread_create(&T_Ping, 0, (void *) ping, (void*) 0);
+    
+    printSplash();
+    
+    while(ON){
         
-        printf("Comando invalido!\n");
-        sleep(1);
+        system("clear");
+        printMenu();
         
-    }else{
-
+        scanf("%d", &option);
+        int aux13, aux15, aux25 = 1;
+        int count15 = 0;
         
-        switch (option){
-            case 1:
-                
-                system("clear");
-                bzero(aux,256);
-                bzero(aux2,16);
-                
-                printf("\n\n\n\n-------------------------AdicionarContato---------------------\n");
-                
-                printf("Nome do contato: ");
-                fflush(stdin);
-                getchar();
-                fgets(aux, 255, stdin);
-                printf("IP do contato: ");
-                fflush(stdin);
-                scanf("%s", aux2);
-                
-                if(isValidIpAddress(aux2)){         //so procegue se IP for valido
-                    
-                    if(searchTouch(aux2) == NULL){
+        for(aux15=0; aux15<100; aux15++){
+            broadContacts[aux15] = (char*)malloc(16);	
+        }
         
-                        contato *a; 
-                        a = initContact(aux,aux2);      //inicializa novo contato
-                        
-                        contato *it;
-                        pthread_mutex_lock(&lock);
-                        it = contactList;               //Variavel auxiliar para percorrer lista
-                        
-                        while(it->next != NULL){
-                            it = it->next;
-                        }
-                        
-                        it->next = a;                   //salva novo contato ao final da lista
-                        
-                        printf("\n\nContato adicionado!");  //imprime confirmaçao
-                        printf("\n\nNome: %s\nIP: %s", a->Nome, a->IP);
-                        fflush(0);
-                        pthread_mutex_unlock(&lock);
-                        
-                    }else{
-                        
-                        printf("Contato com este IP ja existe!\n");
-                        
-                        }
-                }else{
-                    
-                    printf("IP invalido\n");
-                    fflush(0);
-                    
-                }
-                sleep(2);
-                break;
+        if (option <= 0 || option >= 8){
             
-            case 2:
+            printf("Comando invalido!\n");
+            sleep(1);
+            
+        }else{
+            
+            
+            switch (option){
+                case 1:
                     
                     system("clear");
+                    bzero(aux,256);
+                    bzero(aux2,16);
                     
-                    printf("\n\n\n\n-------------------------ListaDeContatos---------------------\n");
+                    printf("\n\n\n\n-------------------------AdicionarContato---------------------\n");
                     
-                    printf("\n\n");
+                    printf("Nome do contato: ");
+                    fflush(stdin);
+                    getchar();
+                    fgets(aux, 255, stdin);
+                    printf("IP do contato: ");
+                    fflush(stdin);
+                    scanf("%s", aux2);
                     
-                    if(contactPrint()){
-                        printf("\nDigite qualquer tecla para voltar");
-                        getchar();
-                        getchar();
-                    }else{
-                        printf("Nao ha contatos!");
-                        fflush(0);
-                        sleep(2);
-                    }  
-                    
-                    break;
-            case 3:
-		//aqui deve-se declarar um int aux13 em cima, se so copiar aqui, lembra de declarar
-		system("clear");
-                 printf("\n\n\n\n-------------------------DeletarContatos---------------------\n");
-		printf("\n\n\n\nAperte: \n1) se desejar listar os contatos para escolher qual excluir\n2) Se você ja sabe o IP do contato a ser excluido\nOutra tecla para voltar\n");
-		scanf("%d", &aux13);
-		if(aux13 == 1){
-			system("clear");
+                    if(isValidIpAddress(aux2)){         //so procegue se IP for valido
                         
-                    printf("\n\n\n\n-------------------------ListaDeContatos---------------------\n");
-			if(contactPrint()){
-
-                    }else{
-                        printf("Nao ha contatos!");
-                        fflush(0);
-                        sleep(2);
-                    }
-		}
-		if(aux13 != 1 && aux13 != 2){
-			printf("Saindo...\n");
-			sleep(1);
-			break;	
-		}
-		if(aux13 == 2)
-			{system("clear");}
-		printf("\nDigite o IP do contato a ser excluido: ");
-		char auxIP3[16];
-		//futuramente, pode-se pensar em tratar esta entrada		
-		scanf("%s", auxIP3);
-		deleteTouch(auxIP3);
-        	break;
-                
-            case 4:
-            
-                system("clear");
-                
-                printf("\n\n\n\n-------------------------EnviarMensagem---------------------\n");
-                bzero(aux,256);
-                bzero(aux2,16);
-
-                if(contactPrint()){
-                    printf("\nSelecione um Contato: ");
-                    scanf("%d", &aux13);
-                    
-                    system("clear");
-                    printf("\n\n\n\n-------------------------EnviarMensagem---------------------\n");
-                    
-                    
-                    if(getIpByNumber(aux13)!=NULL){
-                        
-                        printf("\nSua conversa com %s (%s)\n\n", getIpByNumber(aux13)->Nome, getIpByNumber(aux13)->IP);
-                    
-                        strcpy(aux2,getIpByNumber(aux13)->IP);
-                        if(printChat(aux2)){
+                        if(searchTouch(aux2) == NULL){
+                            
+                            contato *a; 
+                            a = initContact(aux,aux2);      //inicializa novo contato
+                            
+                            contato *it;
+                            pthread_mutex_lock(&lock);
+                            it = contactList;               //Variavel auxiliar para percorrer lista
+                            
+                            while(it->next != NULL){
+                                it = it->next;
+                            }
+                            
+                            it->next = a;                   //salva novo contato ao final da lista
+                            
+                            printf("\n\nContato adicionado!");  //imprime confirmaçao
+                            printf("\n\nNome: %s\nIP: %s", a->Nome, a->IP);
+                            fflush(0);
+                            pthread_mutex_unlock(&lock);
                             
                         }else{
-                            printf("\nAinda nao ha mensagens para esse contato\n\n");
+                            
+                            printf("Contato com este IP ja existe!\n");
+                            
                         }
+                    }else{
+                        
+                        printf("IP invalido\n");
+                        fflush(0);
                         
                     }
-                    
-                     printf("Digite sua mensagem: \n");
-                                    //fflush(0);
-                getchar();
-                fgets(aux, 255, stdin);
-                
-                cliAdr* msg2go = malloc(sizeof(cliAdr));
-                
-                msg2go->hostname = (char*)malloc(16*sizeof(char));
-                msg2go->message = (char*)malloc(256*sizeof(char));
-
-                strcpy(msg2go->hostname,aux2);
-
-                strcpy(msg2go->message,aux);
-
-                pthread_create( &T_Sender, NULL, clientThread, (void*) msg2go);
-                
-                pthread_join(T_Sender, &status); 
-                
-                
-                if ( *(int*)status == 1){
-                    printf("\n\nMensagem enviada com sucesso!");
-                    fflush(0);
-                    
-                    msg *a;                             //Cria novo no com a mensagem
-                    a = initMsg(aux,aux2, 0);
-
-                    pthread_mutex_lock(&lockm);
-                    msg *it;                            //Variavel auxiliar para percorrer lista encadeada
-                    it = messageList;
-                    
-                    while(it->next != NULL){            //Percorre lista ate encontrar ultima posiçao
-                        it = it->next;
-                    }
-                    
-                    it->next = a;   
-                    pthread_mutex_unlock(&lockm);                    //Coloca mensagem na lista encadeada                    
-                    sleep(1);
-                    
-                }else{
-                    printf("\n\nErro ao enviar mensagem, contato offline");
-                    fflush(0);
-                    sleep(2);
-                }
-                
-                free(status);
-
-                }else{
-                printf("Adicione contatos antes!");
-                fflush(0);
-                sleep(2);
-                }
-                
-
-
-                
-                
-                break;
-
-	case 5:
-            /*
-		system("clear");
-		
-        	if(contactPrint()){
-                	getchar();
-                        getchar();
-                }else{
-                	printf("Nao ha contatos!");
-                        fflush(0);
-                        sleep(2);
-			break;                
-		}
-		while(aux25 != -1){	
-			fflush(0);
-        		printf("\n\n\nDigite o IP de um contato que deseja incluir na mensagem de grupo\n\n");
-			//broadNumber foi declarado anteriormente, se copiar essa parte lembre de clarar		
-			scanf("%s", broadIP);
-			strcpy(broadIPs[++count15],broadIP);
-			system("clear");
-			printf("\nContatos que podem ser adicionados ao multicast:\n");
-			fflush(0);			
-			printNoBroadContacts(broadIPs, count15);
-			fflush(0);			
-			printf("\n\nContatos adicionados no Broadcast: \n");
-			fflush(0);
-			printBroadContacts(broadIPs, count15);
-			fflush(0);
-			printf("\nAperte -1 se ja selecionou os contatos desejados, outra tecla para continuar");
-			scanf("%d", &aux25);
-			
-		}
-		
-		getchar();
-		getchar();
-		printf("\n\nDigite a mensagem a ser enviada via multicast:\n");
-		//scanf("%s", &msgMcast);
-                fgets(msgMcast, 255, stdin);
-		//funcao de multicast(broadIPs, size, msgmulticast)
-		multicast(broadIPs,count15,msgMcast);
-		*/
-		break;
-
-            case 7:
-                
-                ON = 0;
-                //pthread_exit(T_Listener,);
-                freeEverything();
-                exit(0);
-                
-            case 6:
-                system("clear");
-                    printf("\n\n\n\n-------------------------TodasMensagens---------------------\n");
-                    
-                if(printMessages()){
-                    
-                        printf("\nDigite qualquer tecla para voltar");
-                        getchar();
-                        getchar();
-                    
-                }else{
-                    printf("\nNão há mensagens!\n\n");
                     sleep(2);
                     break;
-                }
-                
-                
-           
+                    
+                    case 2:
+                        
+                        system("clear");
+                        
+                        printf("\n\n\n\n-------------------------ListaDeContatos---------------------\n");
+                        
+                        printf("\n\n");
+                        
+                        if(contactPrint()){
+                            printf("\nDigite qualquer tecla para voltar");
+                            getchar();
+                            getchar();
+                        }else{
+                            printf("Nao ha contatos!");
+                            fflush(0);
+                            sleep(2);
+                        }  
+                        
+                        break;
+                    case 3:
+                        
+                        system("clear");
+                        printf("\n\n\n\n-------------------------DeletarContatos---------------------\n");
+                        printf("\n\n\n\nAperte: \n1) se desejar listar os contatos para escolher qual excluir\n2) Se você ja sabe o IP do contato a ser excluido\nOutra tecla para voltar\n");
+                        scanf("%d", &aux13);
+                        if(aux13 == 1){
+                            system("clear");
+                            
+                            printf("\n\n\n\n-------------------------ListaDeContatos---------------------\n");
+                            if(contactPrint()){
+                                
+                            }else{
+                                printf("Nao ha contatos!");
+                                fflush(0);
+                                sleep(2);
+                            }
+                        }
+                        if(aux13 != 1 && aux13 != 2){
+                            printf("Saindo...\n");
+                            sleep(1);
+                            break;	
+                        }
+                        if(aux13 == 2)
+                        {system("clear");}
+                        printf("\nDigite o IP do contato a ser excluido: ");
+                        char auxIP3[16];
+                        
+                        scanf("%s", auxIP3);
+                        deleteTouch(auxIP3);
+                        break;
+                        
+                    case 4:
+                        
+                        system("clear");
+                        
+                        printf("\n\n\n\n-------------------------EnviarMensagem---------------------\n");
+                        bzero(aux,256);
+                        bzero(aux2,16);
+                        
+                        if(contactPrint()){
+                            printf("\nSelecione um Contato: ");
+                            scanf("%d", &aux13);
+                            
+                            system("clear");
+                            printf("\n\n\n\n-------------------------EnviarMensagem---------------------\n");
+                            
+                            
+                            if(getIpByNumber(aux13)!=NULL){
+                                
+                                printf("\nSua conversa com %s (%s)\n\n", getIpByNumber(aux13)->Nome, getIpByNumber(aux13)->IP);
+                                
+                                strcpy(aux2,getIpByNumber(aux13)->IP);
+                                if(printChat(aux2)){
+                                    
+                                }else{
+                                    printf("\nAinda nao ha mensagens para esse contato\n\n");
+                                }
+                                
+                            }
+                            
+                            printf("Digite sua mensagem: \n");
+                            //fflush(0);
+                            getchar();
+                            fgets(aux, 255, stdin);
+                            
+                            cliAdr* msg2go = malloc(sizeof(cliAdr));
+                            
+                            msg2go->hostname = (char*)malloc(16*sizeof(char));
+                            msg2go->message = (char*)malloc(256*sizeof(char));
+                            
+                            strcpy(msg2go->hostname,aux2);
+                            
+                            strcpy(msg2go->message,aux);
+                            
+                            pthread_create( &T_Sender, NULL, clientThread, (void*) msg2go);
+                            
+                            pthread_join(T_Sender, &status); 
+                            
+                            if ( *(int*)status == 1){
+                                printf("\n\nMensagem enviada com sucesso!");
+                                fflush(0);
+                                
+                                msg *a;                             //Cria novo no com a mensagem
+                                a = initMsg(aux,aux2, 0);
+                                
+                                pthread_mutex_lock(&lockm);
+                                msg *it;                            //Variavel auxiliar para percorrer lista encadeada
+                                it = messageList;
+                                
+                                while(it->next != NULL){            //Percorre lista ate encontrar ultima posiçao
+                                    it = it->next;
+                                }
+                                
+                                it->next = a;   
+                                pthread_mutex_unlock(&lockm);                    //Coloca mensagem na lista encadeada                    
+                                sleep(1);
+                                
+                            }else{
+                                printf("\n\nErro ao enviar mensagem, contato offline");
+                                fflush(0);
+                                sleep(2);
+                            }
+                            
+                        }else{                
+                            
+                            
+                            printf("Adicione contatos antes!");
+                            fflush(0);
+                            sleep(2);
+                        }
+                        break;
+                        
+                        case 5:
+                            system("clear");
+                            
+                            if(contactPrint()){
+                                sleep(1);
+                            }else{
+                                printf("Nao ha contatos!");
+                                fflush(0);
+                                sleep(2);
+                                break;                
+                            }
+                            while(aux25 != -1){	
+                                fflush(0);
+                                printf("\n\n\nDigite o IP de um contato que deseja incluir na mensagem de grupo\n\n");
+                                //broadNumber foi declarado anteriormente, se copiar essa parte lembre de clarar		
+                                scanf("%s", broadIP);
+                                strcpy(broadContacts[count15++],broadIP);
+                                system("clear");
+                                printf("\nContatos que podem ser adicionados ao multicast:\n");
+                                fflush(0);			
+                                printNoBroadContacts(broadContacts, count15);
+                                fflush(0);			
+                                printf("\n\nContatos adicionados no Broadcast: \n");
+                                fflush(0);
+                                printBroadContacts(broadContacts, count15);
+                                fflush(0);
+                                printf("\nAperte -1 se ja selecionou os contatos desejados, outra tecla para continuar");
+                                scanf("%d", &aux25);
+                                
+                            }
+                            for(i = 0; i<count15; i++)
+                                printf("broadContacts[%d]: %s\n", i, broadContacts[i]);
+                            sleep(1);
+                            fflush(stdin);
+                            printf("\n\nDigite a mensagem a ser enviada via multicast:\n");
+                            getchar();
+                            fgets(msgMcast, 255, stdin);
+                            //funcao de multicast(broadIPs, size, msgmulticast)
+                            multiCount = count15;
+                            pthread_create(&T_multicast2, 0, (void *) multicast2, (void*) 0);
+                            break;
+                            
+                        case 7:
+                            
+                            ON = 0;
+                            freeEverything();
+                            exit(0);
+                            
+                        case 6:
+                            system("clear");
+                            printf("\n\n\n\n-------------------------TodasMensagens---------------------\n");
+                            
+                            if(printMessages()){
+                                
+                                printf("\nDigite qualquer tecla para voltar");
+                                getchar();
+                                getchar();
+                                
+                            }else{
+                                printf("\nNão há mensagens!\n\n");
+                                sleep(2);
+                                break;
+                            }
+                            
+            }
+            
         }
+        
         
     }
     
+    return 0;
     
 }
 
-pthread_join(T_Listener, &status);
 
-pthread_join(T_Ping, &status);
-
-return 0;
-
-}
-     
-     
        
 
      
